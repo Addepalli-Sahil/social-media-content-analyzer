@@ -2,6 +2,8 @@
 
 A Streamlit-based technical assessment project that extracts text from uploaded PDFs and images and provides deterministic, explainable heuristics to evaluate and improve social media content engagement.
 
+Repository metadata cleaned up to remove the Copilot co-author trailer from the latest GitHub commit message.
+
 ## Project overview
 This application allows a user to upload a PDF or image, extract visible text, and assess the content for social media performance using a transparent heuristic-based scoring model. It is designed for a rapid technical assessment, not a production-grade AI content platform.
 
