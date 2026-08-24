@@ -1,4 +1,4 @@
-# Social Media Content Analyzer
+# Social Media Content Analyzer 
 
 A Streamlit-based technical assessment project that extracts text from uploaded PDFs and images and provides deterministic, explainable heuristics to evaluate and improve social media content engagement.
 
