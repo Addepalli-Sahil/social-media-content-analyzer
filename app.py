@@ -128,111 +128,133 @@ def detect_cta(text: str) -> Tuple[bool, List[str]]:
 
 
 def score_hook(text: str) -> Tuple[float, str]:
-    """Score the opening hook heuristically."""
+    """Score the opening hook with smoother heuristics.
+
+    Returns a score between 0.0 and 1.0 and a short explanation.
+    """
     if not text.strip():
         return 0.0, "No content."
 
     sentences = [s for s in re.split(r"(?<=[.!?])\s+", text.strip()) if s.strip()]
-    first_sentence = sentences[0] if sentences else text.strip()
-    word_count = len(simple_tokenize(first_sentence))
+    first = sentences[0] if sentences else text.strip()
+    tokens = simple_tokenize(first)
+    wc = max(len(tokens), 0)
 
-    score = 0.0
-    reasons: List[str] = []
+    # length heuristic: ideal opening length ~8-15 words
+    ideal = 12.0
+    length_score = max(0.0, 1.0 - (abs(wc - ideal) / (ideal * 1.5)))
 
-    if 3 <= word_count <= 25:
-        score += 0.5
-        reasons.append("Concise opening")
-    elif word_count < 3:
-        score += 0.2
-        reasons.append("Opening is very brief")
+    # punctuation boost for ? or ! in opening
+    punct_boost = 0.15 if any(ch in first for ch in "?!") else 0.0
+
+    # power words boost
+    pw_boost = 0.25 if any(pw in first.lower() for pw in HOOK_POWER_WORDS) else 0.0
+
+    # direct-address boost (starts with 'you', 'what', 'why', 'how')
+    direct_start = bool(re.match(r"^(you\b|what\b|why\b|how\b|don\'t\b|here\'s\b)", first.strip().lower()))
+    direct_boost = 0.12 if direct_start else 0.0
+
+    raw_score = (0.6 * length_score) + punct_boost + pw_boost + direct_boost
+    score = min(raw_score, 1.0)
+
+    reasons = []
+    if length_score > 0.7:
+        reasons.append("Good opening length")
+    elif length_score > 0.4:
+        reasons.append("OK opening length")
     else:
-        score += 0.2
-        reasons.append("Opening is lengthy")
+        reasons.append("Consider shortening or tightening the opening")
 
-    if any(ch in first_sentence for ch in "?!"):
-        score += 0.25
-        reasons.append("Punctuation creates urgency")
+    if punct_boost:
+        reasons.append("Engaging punctuation")
+    if pw_boost:
+        reasons.append("Power words present")
+    if direct_boost:
+        reasons.append("Direct audience address detected")
 
-    if any(phrase in first_sentence.lower() for phrase in HOOK_POWER_WORDS):
-        score += 0.25
-        reasons.append("Power words detected")
-
-    score = min(score, 1.0)
-    explanation = ", ".join(reasons) if reasons else "No clear hook signals detected"
+    explanation = ", ".join(reasons)
     return score, explanation
 
 
 def readability_score(text: str) -> float:
-    """Measure readability heuristically based on sentence and word length."""
+    """Return a readability proxy (0.0 to 1.0).
+
+    Uses average sentence length and proportion of long words to compute a smoother score.
+    """
     sentences = [s for s in re.split(r"(?<=[.!?])\s+", text.strip()) if s.strip()]
     words = simple_tokenize(text)
     if not sentences or not words:
         return 0.0
 
     avg_sentence_len = len(words) / len(sentences)
-    avg_word_len = sum(len(word) for word in words) / len(words)
+    long_words = [w for w in words if len(w) >= 7]
+    long_ratio = len(long_words) / len(words)
 
-    score = 0.0
-    if 8 <= avg_sentence_len <= 18:
-        score += 0.6
-    elif avg_sentence_len < 8:
-        score += 0.4
+    # sentence length score (ideal 10-18)
+    if avg_sentence_len <= 10:
+        sent_score = 1.0
+    elif avg_sentence_len <= 18:
+        sent_score = 1.0 - ((avg_sentence_len - 10) / 20.0)
     else:
-        score += 0.2
+        sent_score = max(0.0, 1.0 - ((avg_sentence_len - 18) / 30.0))
 
-    if avg_word_len <= 6:
-        score += 0.4
-    else:
-        score += 0.1
+    # long word penalty
+    long_penalty = max(0.0, 1.0 - (long_ratio * 1.5))
 
-    return min(score, 1.0)
+    score = (0.65 * sent_score) + (0.35 * long_penalty)
+    return max(0.0, min(score, 1.0))
 
 
 def engagement_score(analysis: Dict[str, object]) -> Tuple[int, Dict[str, float]]:
-    """Compute a heuristic overall engagement score from 0 to 100."""
+    """Compute a realistic-looking engagement score (0-100) using weighted, smoothed heuristics."""
     weights = {
-        "hook": 0.30,
-        "readability": 0.25,
-        "cta": 0.20,
-        "hashtags": 0.10,
-        "mentions": 0.05,
-        "length": 0.10,
+        "hook": 0.28,
+        "readability": 0.22,
+        "cta": 0.22,
+        "hashtags": 0.12,
+        "mentions": 0.04,
+        "length": 0.12,
     }
 
     hook = analysis.get("hook_score", 0.0)
     readability = analysis.get("readability_score", 0.0)
     cta = 1.0 if analysis.get("has_cta") else 0.0
 
-    hashtag_count = analysis.get("hashtag_count", 0)
-    if OPTIMAL_HASHTAGS_MIN <= hashtag_count <= OPTIMAL_HASHTAGS_MAX:
-        hashtag_score = 1.0
-    elif hashtag_count == 0:
-        hashtag_score = 0.3
+    hashtags = analysis.get("hashtag_count", 0)
+    # Smooth hashtag score: best around 2-5 hashtags
+    if hashtags == 0:
+        hashtag_score = 0.25
     else:
-        hashtag_score = 0.6
+        # gaussian-like preference around mean 3
+        diff = (hashtags - 3) / 3.0
+        hashtag_score = max(0.0, 1.0 - (diff * diff))
 
-    mention_count = analysis.get("mention_count", 0)
-    mention_score = min(mention_count / 3.0, 1.0)
+    mentions = analysis.get("mention_count", 0)
+    mention_score = min(mentions / 2.0, 1.0)
 
     word_count = analysis.get("word_count", 0)
-    if IDEAL_CONTENT_MIN_WORDS <= word_count <= IDEAL_CONTENT_MAX_WORDS:
+    # length score favors mid-length posts; penalize very short/very long smoothly
+    if word_count <= IDEAL_CONTENT_MIN_WORDS:
+        length_score = 0.3 + (word_count / max(1.0, IDEAL_CONTENT_MIN_WORDS)) * 0.7
+    elif word_count <= IDEAL_CONTENT_MAX_WORDS:
         length_score = 1.0
-    elif word_count < IDEAL_CONTENT_MIN_WORDS:
-        length_score = 0.4
     else:
-        length_score = 0.6
+        # decay after max
+        length_score = max(0.2, 1.0 - ((word_count - IDEAL_CONTENT_MAX_WORDS) / IDEAL_CONTENT_MAX_WORDS))
 
     breakdown = {
-        "hook": hook,
-        "readability": readability,
-        "cta": cta,
-        "hashtags": hashtag_score,
-        "mentions": mention_score,
-        "length": length_score,
+        "hook": round(hook, 3),
+        "readability": round(readability, 3),
+        "cta": round(cta, 3),
+        "hashtags": round(hashtag_score, 3),
+        "mentions": round(mention_score, 3),
+        "length": round(length_score, 3),
     }
 
-    total = sum(breakdown[key] * weights[key] for key in weights)
-    score_0_100 = int(round(total * 100))
+    total = sum(breakdown[k] * weights[k] for k in weights)
+    # small calibration to avoid extreme 0/100 for most natural content
+    calibrated = (total * 0.92) + 0.04
+    score_0_100 = int(round(max(0.0, min(calibrated, 1.0)) * 100))
     return score_0_100, breakdown
 
 
