@@ -258,8 +258,116 @@ def engagement_score(analysis: Dict[str, object]) -> Tuple[int, Dict[str, float]
     return score_0_100, breakdown
 
 
+def detect_document_type(text: str) -> str:
+    """Detect whether the text looks like a resume/CV or a social post.
+
+    Returns: 'resume' or 'social'. Uses simple heuristics: section keywords, presence of email/phone, and typical resume headings.
+    """
+    ltext = text.lower()
+    # resume indicators
+    resume_markers = ["curriculum vitae", "resume", "objective", "experience", "education", "skills", "professional summary", "work experience"]
+    contact_pattern = re.search(r"[\w.+-]+@[\w-]+\.[\w.-]+", text)
+    phone_pattern = re.search(r"\+?\d[\d \-()]{6,}\d", text)
+
+    marker_score = sum(1 for m in resume_markers if m in ltext)
+    if marker_score >= 2 or (contact_pattern and phone_pattern) or (marker_score >=1 and (contact_pattern or phone_pattern)):
+        return "resume"
+    # otherwise assume social short-form content if it's short and contains hashtags or mentions
+    if len(text.split()) < 400 and ("#" in text or "@" in text or any(kw in ltext for kw in ["learn more", "sign up", "click", "download"])):
+        return "social"
+    # default to social for anything shorter; resumes are usually longer and structured
+    return "social"
+
+
+def analyze_resume_text(text: str) -> Dict[str, object]:
+    """Analyze resume-style documents and return a resume-focused report.
+
+    Produces fields: resume_score (0-100), checks, suggestions, and component breakdown.
+    """
+    words = simple_tokenize(text)
+    word_count = len(words)
+    char_count = len(text)
+
+    email = bool(re.search(r"[\w.+-]+@[\w-]+\.[\w.-]+", text))
+    phone = bool(re.search(r"\+?\d[\d \-()]{6,}\d", text))
+    has_contact = email or phone
+
+    # Sections
+    sections = {"education": bool(re.search(r"\beducation\b", text, re.I)),
+                "experience": bool(re.search(r"\bexperience\b", text, re.I)),
+                "skills": bool(re.search(r"\bskills\b", text, re.I)),
+                "projects": bool(re.search(r"\bprojects\b", text, re.I)),
+                }
+    section_count = sum(1 for v in sections.values() if v)
+
+    # Bullet/formatting density (approx)
+    bullets = len(re.findall(r"^\s*[-•*]\s+", text, flags=re.M))
+
+    # Action verbs presence
+    action_verbs = ["managed", "developed", "led", "designed", "implemented", "improved", "achieved", "built", "created", "delivered"]
+    action_count = sum(text.lower().count(v) for v in action_verbs)
+
+    # Readability reuse
+    read_score = readability_score(text)
+
+    # Component scores (0-1)
+    contact_score = 1.0 if has_contact else 0.0
+    section_score = min(1.0, section_count / 3.0)
+    format_score = min(1.0, bullets / 5.0) if bullets > 0 else 0.4
+    action_score = min(1.0, action_count / 3.0)
+    length_score = 1.0 if 300 <= word_count <= 1200 else max(0.2, min(1.0, word_count / 300.0))
+
+    weights = {
+        "contact": 0.25,
+        "sections": 0.25,
+        "format": 0.15,
+        "action": 0.15,
+        "readability": 0.1,
+        "length": 0.1,
+    }
+
+    breakdown = {
+        "contact": contact_score,
+        "sections": section_score,
+        "format": format_score,
+        "action": action_score,
+        "readability": read_score,
+        "length": length_score,
+    }
+
+    total = sum(breakdown[k] * weights[k] for k in weights)
+    resume_score = int(round(max(0.0, min(total, 1.0)) * 100))
+
+    suggestions: List[str] = []
+    if not has_contact:
+        suggestions.append("Add clear contact information (email and phone) near the top of the resume.")
+    if section_count < 2:
+        suggestions.append("Add standard sections such as Experience, Education, and Skills to help recruiters scan your profile.")
+    if bullets < 3:
+        suggestions.append("Use bullet points for role responsibilities and achievements to improve scannability.")
+    if action_count < 2:
+        suggestions.append("Use stronger action verbs (managed, developed, led, designed) to describe achievements.")
+    if read_score < 0.45:
+        suggestions.append("Shorten long sentences and simplify wording to improve clarity.")
+
+    return {
+        "doc_type": "resume",
+        "word_count": word_count,
+        "char_count": char_count,
+        "resume_score": resume_score,
+        "breakdown": breakdown,
+        "checks": {"contact": has_contact, "sections": sections, "bullets": bullets, "action_count": action_count},
+        "suggestions": suggestions,
+    }
+
+
 def analyze_text(text: str) -> Dict[str, object]:
-    """Run deterministic content analysis and return structured insights."""
+    """Main analysis router that detects document type and delegates to the appropriate analyzer."""
+    doc_type = detect_document_type(text)
+    if doc_type == "resume":
+        return analyze_resume_text(text)
+
+    # default: social analysis
     words = simple_tokenize(text)
     word_count = len(words)
     hashtags = count_hashtags(text)
@@ -269,6 +377,7 @@ def analyze_text(text: str) -> Dict[str, object]:
     readability = readability_score(text)
 
     analysis = {
+        "doc_type": "social",
         "word_count": word_count,
         "char_count": len(text),
         "hashtag_count": len(hashtags),
@@ -375,16 +484,63 @@ def _score_color(score: int) -> str:
 
 
 def show_analysis_ui(original_text: str, analysis: Dict[str, object]) -> None:
-    """Render analysis results in a polished, readable layout."""
+    """Render analysis results in a polished, readable layout.
+
+    Automatically adapts UI for social posts or resumes based on analysis['doc_type'].
+    """
+    doc_type = analysis.get("doc_type", "social")
     st.subheader("Analysis Results")
 
+    if doc_type == "resume":
+        # Resume-focused UI
+        left, right = st.columns([2, 1])
+        with left:
+            st.markdown(f"<div class='metric-card'><div class='metric-title'>Resume Score</div><div class='metric-value'>{analysis['resume_score']}/100</div></div>", unsafe_allow_html=True)
+            st.progress(min(max(int(analysis['resume_score']), 0), 100))
+            st.markdown("### Checks")
+            checks = analysis.get("checks", {})
+            st.write(f"Contact info: {'Yes' if checks.get('contact') else 'No'}")
+            st.write(f"Sections found: {', '.join([k for k,v in analysis.get('breakdown',{}).items() if k in ['sections'] and v>0]) or 'See details below'}")
+
+            with st.expander("Detailed resume breakdown"):
+                st.write({
+                    "word_count": analysis.get("word_count"),
+                    "char_count": analysis.get("char_count"),
+                    "action_verbs_used": analysis.get("checks", {}).get("action_count"),
+                    "bullet_points": analysis.get("checks", {}).get("bullets"),
+                    "component_scores": analysis.get("breakdown"),
+                })
+
+            st.markdown("### Suggestions")
+            if analysis.get("suggestions"):
+                st.markdown("<div class='suggestion-list'>", unsafe_allow_html=True)
+                for s in analysis["suggestions"]:
+                    st.markdown(f"- {s}")
+                st.markdown("</div>", unsafe_allow_html=True)
+            else:
+                st.write("No suggestions — resume looks good to our heuristic checks.")
+
+        with right:
+            st.markdown("### Quick resume tips")
+            st.write("- Ensure contact info is prominent")
+            st.write("- Use bulleted achievements with action verbs")
+            st.write("- Keep length between ~300–1000 words for most roles")
+            st.markdown("---")
+            st.download_button("Download extracted text", data=original_text, file_name="resume_extracted.txt", mime="text/plain")
+
+        st.markdown("---")
+        st.markdown("### Extracted content preview")
+        st.text_area("Extracted text", value=original_text, height=300)
+        return
+
+    # Default: social post UI
     col1, col2, col3 = st.columns([1.6, 1, 1])
     with col1:
         st.markdown(
             "<div class='metric-card'><div class='metric-title'>Engagement Score</div><div class='metric-value'>{}</div></div>".format(f"{analysis['engagement_score']}/100"),
             unsafe_allow_html=True,
         )
-        st.progress(min(max(int(analysis["engagement_score"]), 0), 100))
+        st.progress(min(max(int(analysis['engagement_score']), 0), 100))
         st.markdown(
             f"<div style='margin-top:8px'><span class='score-badge' style='background:{_score_color(int(analysis['engagement_score']))}'>Heuristic</span> <span style='margin-left:8px' class='footer-note'>Explainable engagement score (heuristic)</span></div>",
             unsafe_allow_html=True,
@@ -441,7 +597,6 @@ def show_analysis_ui(original_text: str, analysis: Dict[str, object]) -> None:
         st.markdown("### Quick actions")
         st.write("Select and copy the text from the preview on the left.")
         st.download_button("Download as .txt", data=original_text, file_name="extracted_text.txt", mime="text/plain")
-
 
 def main() -> None:
     """Streamlit app entrypoint."""
