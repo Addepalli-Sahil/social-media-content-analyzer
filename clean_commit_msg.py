@@ -1,0 +1,1 @@
+def commit_callback(commit):\n    import re\n    msg = commit.message.decode('utf-8', 'ignore')\n    new = re.sub(r'(?mi)^Co-authored-by:.*?Copilot.*\\n?', '', msg)\n    if new != msg:\n        commit.message = new.encode('utf-8')\n

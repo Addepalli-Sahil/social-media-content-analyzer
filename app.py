@@ -334,6 +334,7 @@ def analyze_text(text: str) -> Dict[str, object]:
 
 # UI helpers
 
+<<<<<<< HEAD
 def show_analysis_ui(original_text: str, analysis: Dict[str, object]) -> None:
     """Render analysis results in Streamlit UI."""
     st.subheader("Analysis Results")
@@ -356,6 +357,74 @@ def show_analysis_ui(original_text: str, analysis: Dict[str, object]) -> None:
         st.info("No CTA detected.")
 
     with st.expander("Detailed counts and breakdown"):
+=======
+
+def inject_custom_css() -> None:
+    """Inject a refined stylesheet and typography for a premium, human-designed look."""
+    st.markdown(
+        """
+        <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
+        html, body, [class*="css"]  { font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial; }
+        .main > div { padding-top: 1.0rem; }
+        .app-shell { background: linear-gradient(180deg,#ffffff 0%, #f8fafc 100%); border-radius: 14px; padding: 1.6rem; margin-bottom: 1rem; border: 1px solid rgba(15,23,42,0.04); }
+        .hero-badge { display:inline-block; background:#0f172a; color:#fff; padding:0.28rem 0.6rem; border-radius:999px; font-size:0.72rem; letter-spacing:0.06em; text-transform:uppercase; }
+        .upload-box { border: 1px dashed rgba(99,102,241,0.28); border-radius:12px; padding:1rem; background: linear-gradient(180deg, rgba(99,102,241,0.03), rgba(148,163,184,0.02)); }
+        .metric-card { background: linear-gradient(180deg,#ffffff,#fbfdff); border-radius:12px; padding:0.8rem; border:1px solid rgba(14,165,233,0.06); }
+        .metric-title { color:#475569; font-size:0.95rem; margin-bottom:0.2rem; }
+        .metric-value { font-weight:700; font-size:1.5rem; color:#0f172a; }
+        .score-badge { display:inline-block; padding:0.35rem 0.7rem; border-radius:8px; color:#fff; font-weight:600; }
+        .suggestion-list { background: linear-gradient(90deg, rgba(236,253,245,0.8), rgba(255,255,255,0.6)); border-left:4px solid rgba(16,185,129,0.9); padding:0.9rem; border-radius:8px; }
+        .footer-note { color: #64748b; font-size:0.9rem; }
+        .progress-bar .stProgress > div { background: linear-gradient(90deg,#06b6d4,#3b82f6); }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def _score_color(score: int) -> str:
+    """Return a hex color based on score for the score badge."""
+    if score >= 80:
+        return "#10b981"  # green
+    if score >= 60:
+        return "#f59e0b"  # amber
+    return "#ef4444"      # red
+
+
+def show_analysis_ui(original_text: str, analysis: Dict[str, object]) -> None:
+    """Render analysis results in a more polished layout with progress and actionable items."""
+    st.subheader("Analysis Results")
+
+    # Top metrics row
+    m1, m2, m3 = st.columns([1.6, 1, 1])
+    with m1:
+        st.markdown("<div class='metric-card'><div class='metric-title'>Engagement Score</div><div class='metric-value'>{}</div></div>".format(f"{analysis['engagement_score']}/100"), unsafe_allow_html=True)
+        st.progress(min(max(int(analysis['engagement_score']), 0), 100))
+        st.markdown(f"<div style='margin-top:8px'><span class='score-badge' style='background:{_score_color(analysis['engagement_score'])}'>Heuristic</span> <span style='margin-left:8px' class='footer-note'>Explainable engagement score (heuristic)</span></div>", unsafe_allow_html=True)
+    with m2:
+        st.markdown("<div class='metric-card'><div class='metric-title'>Word Count</div><div class='metric-value'>{}</div></div>".format(analysis["word_count"]), unsafe_allow_html=True)
+    with m3:
+        st.markdown("<div class='metric-card'><div class='metric-title'>Hashtags</div><div class='metric-value'>{}</div></div>".format(analysis["hashtag_count"]), unsafe_allow_html=True)
+
+    # Second row: hook, readability, CTA
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        st.markdown("### Hook quality")
+        st.write(f"Score: {int(round(analysis['hook_score']*100))}/100 — {analysis['hook_explanation']}")
+    with c2:
+        st.markdown("### Readability")
+        st.write(f"Score: {int(round(analysis['readability_score']*100))}/100 — shorter sentences and simple words improve this.")
+    with c3:
+        st.markdown("### CTA Detection")
+        if analysis["has_cta"]:
+            st.success(f"CTA detected: {', '.join(analysis['cta_list'])}")
+        else:
+            st.info("No CTA detected.")
+
+    # Expandable detailed breakdown
+    with st.expander("Detailed counts and breakdown", expanded=False):
+>>>>>>> 161c0d7 (UI: premium polish — improved layout and UX)
         st.write({
             "characters": analysis["char_count"],
             "word_count": analysis["word_count"],
@@ -364,28 +433,62 @@ def show_analysis_ui(original_text: str, analysis: Dict[str, object]) -> None:
             "score_breakdown": analysis["score_breakdown"],
         })
 
+<<<<<<< HEAD
     st.markdown("**Suggestions**")
     if analysis["suggestions"]:
         for s in analysis["suggestions"]:
             st.write(f"- {s}")
+=======
+    # Suggestions
+    st.markdown("### Improvement Suggestions")
+    if analysis["suggestions"]:
+        st.markdown("<div class='suggestion-list'>", unsafe_allow_html=True)
+        for s in analysis["suggestions"]:
+            st.markdown(f"- {s}")
+        st.markdown("</div>", unsafe_allow_html=True)
+>>>>>>> 161c0d7 (UI: premium polish — improved layout and UX)
     else:
         st.write("No specific suggestions — this looks good for a social post!")
 
     st.markdown("---")
+<<<<<<< HEAD
     st.markdown("**Extracted content preview**")
     st.text_area("Extracted text", value=original_text, height=300)
 
+=======
+    # Show extracted content and quick actions in two columns
+    left, right = st.columns([2, 1])
+    with left:
+        st.markdown("### Extracted content preview")
+        st.text_area("Extracted text", value=original_text, height=320)
+    with right:
+        st.markdown("### Quick actions")
+        if st.button("Copy text"):
+            # Streamlit cannot access clipboard from server; provide a copy helper
+            st.write("Select and copy the text from the preview box on the left.")
+        if st.button("Download as .txt"):
+            st.download_button("Download extracted text", data=original_text, file_name="extracted_text.txt", mime="text/plain")
+        st.markdown("---")
+        st.markdown("#### Notes")
+        st.markdown("- Heuristic score only — not a replacement for A/B testing.\n- Improve hook and add a concise CTA to increase engagement.")
+>>>>>>> 161c0d7 (UI: premium polish — improved layout and UX)
 
 def main() -> None:
     """Streamlit app entrypoint."""
     st.set_page_config(page_title="Social Media Content Analyzer", layout="wide")
+<<<<<<< HEAD
 
     # Sidebar
+=======
+    inject_custom_css()
+
+>>>>>>> 161c0d7 (UI: premium polish — improved layout and UX)
     with st.sidebar:
         st.title("About")
         st.write("Deterministic social media content analyzer. Upload a PDF or image to extract text and receive heuristics-based suggestions to improve engagement. No files are stored.")
         st.markdown("---")
         st.write("Built with: Streamlit, PyMuPDF, Pillow, pytesseract")
+<<<<<<< HEAD
 
     # Header / Hero
     st.title("Social Media Content Analyzer")
@@ -401,21 +504,59 @@ def main() -> None:
             with st.spinner("Loading sample..."):
                 try:
                     sample_text = open("sample_test.txt", "r", encoding="utf-8").read()
+=======
+        st.caption("Heuristic engagement score only — useful for rapid assessment, not scientific measurement.")
+
+    st.markdown(
+        """
+        <div class="app-shell">
+            <div class="hero-badge">Content Intelligence</div>
+            <h1 style="margin:0;">Social Media Content Analyzer</h1>
+            <p style="margin-top:0.6rem; color:#475569; font-size:1.03rem;">Upload a PDF or image, extract the social post text, and get actionable engagement feedback with clear, explainable heuristics.</p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.markdown("<div class='upload-box'>", unsafe_allow_html=True)
+    st.header("Upload document")
+    uploaded = st.file_uploader(
+        "Drag & drop or click to select a file (PDF, PNG, JPG, JPEG, WEBP)",
+        type=list(ALLOWED_EXTENSIONS),
+        label_visibility="collapsed",
+    )
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    if not uploaded:
+        st.info("No file uploaded yet. Try the included sample test or upload your own document.")
+        if st.button("Load sample content", type="primary"):
+            with st.spinner("Loading sample..."):
+                try:
+                    with open("sample_test.txt", "r", encoding="utf-8") as sample_file:
+                        sample_text = sample_file.read()
+>>>>>>> 161c0d7 (UI: premium polish — improved layout and UX)
                     analysis = analyze_text(sample_text)
                     show_analysis_ui(sample_text, analysis)
                 except Exception as exc:
                     st.error(f"Failed to load sample: {exc}")
         return
 
+<<<<<<< HEAD
     # Validate
+=======
+>>>>>>> 161c0d7 (UI: premium polish — improved layout and UX)
     is_valid, message = validate_upload(uploaded)
     if not is_valid:
         st.error(message)
         return
 
+<<<<<<< HEAD
     # Process
     file_bytes = uploaded.read()
     file_stream = io.BytesIO(file_bytes)
+=======
+    file_bytes = uploaded.read()
+>>>>>>> 161c0d7 (UI: premium polish — improved layout and UX)
     ext = uploaded.name.rsplit('.', 1)[1].lower()
 
     extracted_text = ""
@@ -424,7 +565,10 @@ def main() -> None:
         try:
             if ext == "pdf":
                 extracted_text = extract_text_from_pdf(io.BytesIO(file_bytes))
+<<<<<<< HEAD
                 # If PDF extraction yields only page markers or empty, note it
+=======
+>>>>>>> 161c0d7 (UI: premium polish — improved layout and UX)
                 if not extracted_text.strip() or re.fullmatch(r"(\[Page \d+\]\s*)+", extracted_text.strip()):
                     st.warning("PDF contained little to no extractable text. If the PDF is scanned or image-based, try uploading it as an image for OCR.")
             else:
@@ -444,7 +588,10 @@ def main() -> None:
         st.info("No text was extracted from the uploaded file.")
         return
 
+<<<<<<< HEAD
     # Analyze
+=======
+>>>>>>> 161c0d7 (UI: premium polish — improved layout and UX)
     with st.spinner("Analyzing content..."):
         analysis = analyze_text(extracted_text)
 
@@ -455,7 +602,11 @@ if __name__ == "__main__":
     try:
         main()
     except Exception as exc:
+<<<<<<< HEAD
         # Friendly error message; avoid exposing internals to end users
         st.error("An unexpected error occurred. Please try again or contact the developer.")
         # For local debugging (developer): print to stderr
+=======
+        st.error("An unexpected error occurred. Please try again or contact the developer.")
+>>>>>>> 161c0d7 (UI: premium polish — improved layout and UX)
         print("ERROR:", exc, file=sys.stderr)
